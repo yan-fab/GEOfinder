@@ -1,6 +1,7 @@
 # geobr: Download Official Spatial Data Sets of Brazil
 
 <p align="justify">
+<strong>Note: This repository is a fork of the original geobr project.</strong><br><br>
 geobr is a computational package to download official spatial data sets
 of Brazil. The package covers a wide range of spatial data sets,
 available at various geographic scales and for various years with
