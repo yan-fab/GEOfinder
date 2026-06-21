@@ -577,3 +577,189 @@ on($('langToggle'), 'click', () => {
 // ── Init ──────────────────────────────────────────────────────
 buildPickerList();
 qqUpdateCode();
+
+// ═══════════════════════════════════════════════════════════════════
+//  LAYER BUILDER MODULE  (geo_workspace → QGIS)
+// ═══════════════════════════════════════════════════════════════════
+
+const API_BASE = 'http://localhost:5050/api';
+let lbSelectedLayers = new Set();
+let lbFormat = 'gpkg';
+let lbCurrentJobId = null;
+let lbSseSource = null;
+let lbApiOnline = false;
+
+const CAT_COLORS = {
+  migracao:'#22d3ee', assistencia:'#818cf8', economia:'#fbbf24',
+  censo:'#a78bfa', transporte:'#34d399', base:'#94a3b8',
+};
+
+function hexToRgb(hex) {
+  const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return r ? `${parseInt(r[1],16)},${parseInt(r[2],16)},${parseInt(r[3],16)}` : '148,163,184';
+}
+
+async function lbCheckApi() {
+  try {
+    const r = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
+    if (r.ok) {
+      lbApiOnline = true;
+      document.getElementById('lb-api-dot').className = 'status-dot active';
+      document.getElementById('lb-api-text').textContent = 'API online — servidor Layer Builder conectado';
+      lbLoadLayers(); lbLoadOutputs();
+    } else { throw new Error(); }
+  } catch {
+    lbApiOnline = false;
+    document.getElementById('lb-api-dot').className = 'status-dot inactive';
+    document.getElementById('lb-api-text').textContent = 'API offline — execute: python geo_workspace/layer_builder/api_server.py';
+  }
+}
+
+async function lbLoadLayers() {
+  try {
+    const r = await fetch(`${API_BASE}/layers`);
+    const data = await r.json();
+    lbRenderLayerCards(data.layers || []);
+  } catch {
+    document.getElementById('lb-layers-grid').innerHTML = '<div style="color:var(--accent-rose);padding:12px;font-size:.84rem">Erro ao carregar camadas</div>';
+  }
+}
+
+function lbRenderLayerCards(layers) {
+  const grid = document.getElementById('lb-layers-grid');
+  grid.innerHTML = '';
+  layers.forEach(layer => {
+    const color = CAT_COLORS[layer.category] || '#94a3b8';
+    const lbl = document.createElement('label');
+    lbl.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:all .18s ease;font-size:.83rem;color:var(--text-secondary)';
+    lbl.innerHTML = `<input type="checkbox" style="accent-color:${color};width:14px;height:14px" data-lid="${layer.id}" /><span style="flex:1">${layer.label}</span><span style="font-size:.68rem;padding:2px 6px;border-radius:999px;background:rgba(${hexToRgb(color)},.12);color:${color};font-weight:600;white-space:nowrap">${layer.category}</span>`;
+    const cb = lbl.querySelector('input');
+    cb.addEventListener('change', () => {
+      if (cb.checked) { lbSelectedLayers.add(layer.id); lbl.style.borderColor=color; lbl.style.background=`rgba(${hexToRgb(color)},.06)`; }
+      else { lbSelectedLayers.delete(layer.id); lbl.style.borderColor='var(--border)'; lbl.style.background='var(--bg-elevated)'; }
+      lbUpdateSummary();
+    });
+    grid.appendChild(lbl);
+  });
+  lbUpdateSummary();
+}
+
+function lbUpdateSummary() {
+  const n = lbSelectedLayers.size;
+  document.getElementById('lb-selection-summary').textContent = n === 0 ? 'Nenhuma camada selecionada' : `${n} camada${n>1?'s':''} selecionada${n>1?'s':''} -- formato: .${lbFormat}`;
+  document.getElementById('lb-build-btn').disabled = n === 0 || !lbApiOnline;
+}
+
+document.getElementById('lb-select-all').addEventListener('click', () => document.querySelectorAll('#lb-layers-grid input').forEach(cb => { if (!cb.checked) cb.click(); }));
+document.getElementById('lb-deselect-all').addEventListener('click', () => document.querySelectorAll('#lb-layers-grid input').forEach(cb => { if (cb.checked) cb.click(); }));
+
+['lb-fmt-gpkg','lb-fmt-geojson','lb-fmt-shp'].forEach(id => {
+  document.getElementById(id).addEventListener('click', () => {
+    ['lb-fmt-gpkg','lb-fmt-geojson','lb-fmt-shp'].forEach(i => document.getElementById(i).classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    lbFormat = document.getElementById(id).dataset.fmt;
+    lbUpdateSummary();
+  });
+});
+
+document.getElementById('lb-build-btn').addEventListener('click', async () => {
+  if (!lbApiOnline || lbSelectedLayers.size === 0) return;
+  const layers = Array.from(lbSelectedLayers);
+  const outDir = document.getElementById('lb-output-dir').value.trim() || undefined;
+  document.getElementById('lb-log-console').textContent = 'Iniciando build...\n';
+  document.getElementById('lb-build-progress').style.display = 'block';
+  document.getElementById('lb-result-card').style.display = 'none';
+  document.getElementById('lb-build-btn').disabled = true;
+  lbSetProgress(5, 'Enviando job...');
+  try {
+    const body = { layers, format: lbFormat };
+    if (outDir) body.output_dir = outDir;
+    const resp = await fetch(`${API_BASE}/build`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (!data.job_id) throw new Error(data.error || 'Erro ao criar job');
+    lbCurrentJobId = data.job_id;
+    document.getElementById('lb-job-badge').textContent = `job: ${lbCurrentJobId}`;
+    lbSetProgress(15, 'Job em execucao...');
+    lbStreamLogs(lbCurrentJobId);
+  } catch(e) {
+    lbSetProgress(0, 'Erro: ' + e.message, true);
+    document.getElementById('lb-build-btn').disabled = false;
+  }
+});
+
+function lbSetProgress(pct, msg, error=false) {
+  document.getElementById('lb-progress-bar').style.width = pct + '%';
+  document.getElementById('lb-build-status').textContent = msg;
+  const c = error ? 'var(--accent-rose)' : pct === 100 ? 'var(--accent-emerald)' : 'var(--accent-amber)';
+  document.getElementById('lb-build-status').style.color = c;
+  document.getElementById('lb-progress-dot').style.background = c;
+}
+
+function lbStreamLogs(jobId) {
+  if (lbSseSource) lbSseSource.close();
+  lbSseSource = new EventSource(`${API_BASE}/logs/${jobId}`);
+  let lines = [], pct = 20;
+  lbSseSource.onmessage = e => {
+    if (e.data === '[BUILD COMPLETE]') { lbSseSource.close(); lbOnBuildComplete(jobId); return; }
+    lines.push(e.data);
+    const logEl = document.getElementById('lb-log-console');
+    logEl.textContent = lines.join('\n');
+    logEl.scrollTop = logEl.scrollHeight;
+    if (e.data.includes('Building')) pct = Math.min(pct+8, 85);
+    else if (e.data.includes('Salvo') || e.data.includes('success')) pct = Math.min(pct+5, 90);
+    lbSetProgress(pct, `Processando... (${lines.length} linhas)`);
+  };
+  lbSseSource.onerror = () => { lbSseSource.close(); lbOnBuildComplete(jobId); };
+}
+
+async function lbOnBuildComplete(jobId) {
+  lbSetProgress(95, 'Finalizando...');
+  await new Promise(r => setTimeout(r, 800));
+  try {
+    const r = await fetch(`${API_BASE}/status/${jobId}`);
+    const job = await r.json();
+    if (job.status === 'done') {
+      lbSetProgress(100, `Build concluido -- ${job.summary && job.summary.succeeded || '?'} camadas geradas`);
+      lbShowResult(job.summary);
+    } else { lbSetProgress(100, 'Build falhou -- veja o log', true); }
+  } catch { lbSetProgress(100, 'Build concluido (verifique outputs)'); }
+  document.getElementById('lb-build-btn').disabled = false;
+  lbLoadOutputs();
+}
+
+function lbShowResult(summary) {
+  if (!summary) return;
+  const ok = summary.succeeded || 0, fail = summary.failed || 0;
+  document.getElementById('lb-result-title').textContent = `${ok > 0 ? 'OK' : 'FALHA'} -- ${ok} camadas geradas, ${fail} falha(s)`;
+  let html = `<div style="text-align:center;padding:12px;background:var(--bg-elevated);border-radius:8px"><div style="font-size:1.8rem;font-weight:700;color:var(--accent-emerald)">${ok}</div><div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">Geradas</div></div><div style="text-align:center;padding:12px;background:var(--bg-elevated);border-radius:8px"><div style="font-size:1.8rem;font-weight:700;color:${fail>0?'var(--accent-rose)':'var(--text-muted)'}">${fail}</div><div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">Falhas</div></div><div style="text-align:center;padding:12px;background:var(--bg-elevated);border-radius:8px"><div style="font-size:1.1rem;font-weight:700;color:var(--accent-cyan);font-family:monospace">.${lbFormat}</div><div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">Formato</div></div>`;
+  if (summary.layers && summary.layers.length) {
+    const rows = summary.layers.map(l => `<div style="display:flex;align-items:center;gap:8px;font-size:.8rem;padding:4px 0"><span style="color:${l.success?'var(--accent-emerald)':'var(--accent-rose)'};font-weight:700;width:14px">${l.success?'OK':'ERR'}</span><span style="flex:1;color:var(--text-secondary)">${l.layer_id}</span><span style="color:var(--text-muted)">${l.features} feicoes</span><span style="color:var(--text-muted)">${l.duration_s}s</span></div>`).join('');
+    html += `<div style="grid-column:1/-1;padding:12px;background:var(--bg-elevated);border-radius:8px">${rows}</div>`;
+  }
+  document.getElementById('lb-result-stats').innerHTML = html;
+  document.getElementById('lb-result-card').style.display = 'block';
+}
+
+async function lbLoadOutputs() {
+  const tbody = document.getElementById('lb-files-tbody');
+  try {
+    const r = await fetch(`${API_BASE}/outputs`);
+    const data = await r.json();
+    const files = data.files || [];
+    if (!files.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">Nenhum arquivo gerado ainda</td></tr>'; return; }
+    const extC = { gpkg:'#22d3ee', geojson:'#fbbf24', shp:'#a78bfa' };
+    tbody.innerHTML = files.map(f => `<tr><td><strong>${f.name}</strong></td><td><span style="font-family:monospace;color:${extC[f.ext]||'#94a3b8'};font-size:.8rem">.${f.ext}</span></td><td style="color:var(--text-secondary)">${f.size_mb} MB</td><td style="color:var(--text-muted);font-size:.8rem">${new Date(f.modified).toLocaleString('pt-BR')}</td><td><a href="${API_BASE}/download/${f.name}" class="btn-icon" download style="text-decoration:none;font-size:.75rem">Download</a></td></tr>`).join('');
+  } catch { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px">API offline</td></tr>'; }
+}
+
+document.getElementById('lb-log-copy').addEventListener('click', () => { navigator.clipboard.writeText(document.getElementById('lb-log-console').textContent); });
+document.getElementById('lb-refresh-outputs').addEventListener('click', lbLoadOutputs);
+document.getElementById('lb-check-api').addEventListener('click', lbCheckApi);
+
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => { if (btn.dataset.panel === 'layer-builder') setTimeout(lbCheckApi, 80); });
+});
+
+const _lbStyle = document.createElement('style');
+_lbStyle.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}';
+document.head.appendChild(_lbStyle);

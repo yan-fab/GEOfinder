@@ -71,7 +71,14 @@
       <button class="nav-item" data-panel="local-db">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
         Banco de Dados Local
-        <span class="badge badge-new">NOVO</span>
+      </button>
+
+      <div class="nav-divider"></div>
+      <div class="nav-section-label">🗺 QGIS Builder</div>
+      <button class="nav-item" data-panel="layer-builder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="2,8.5 12,15.5 22,8.5"/></svg>
+        Construtor de Camadas
+        <span class="badge badge-new">QGIS</span>
       </button>
 
       <div class="nav-divider"></div>
@@ -797,6 +804,157 @@ print(df)
               </div>
               <pre class="code-block tall" id="cg-output"><code id="cg-code-content"># Selecione datasets à esquerda para gerar o código
 </code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ════ PANEL: Layer Builder (QGIS) ════ -->
+      <section class="panel" id="panel-layer-builder">
+        <div class="panel-header">
+          <h1>🗺 Construtor de Camadas QGIS</h1>
+          <p class="panel-desc">Gera automaticamente camadas vetoriais (.gpkg, .geojson, .shp) prontas para QGIS a partir dos dados do geo_workspace.</p>
+        </div>
+
+        <!-- API Status Bar -->
+        <div class="local-db-status" id="lb-api-status" style="margin-bottom:20px">
+          <div class="status-dot inactive" id="lb-api-dot"></div>
+          <span id="lb-api-text">API desconectada — inicie o servidor: python layer_builder/api_server.py</span>
+          <button class="btn-icon" id="lb-check-api" style="margin-left:auto">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Verificar
+          </button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+          <!-- Layer Selector -->
+          <div class="ldb-card" style="grid-column:1/-1">
+            <div class="ldb-card-header">
+              <div class="ldb-card-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5"/></svg>
+              </div>
+              <h3>Camadas Disponíveis</h3>
+              <button class="btn-icon" id="lb-select-all" style="margin-left:auto;font-size:.75rem">Selecionar todas</button>
+              <button class="btn-icon" id="lb-deselect-all" style="font-size:.75rem">Limpar</button>
+            </div>
+            <div id="lb-layers-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:8px">
+              <!-- Populated by JS -->
+              <div style="color:var(--text-muted);font-size:.84rem;padding:12px">Carregando camadas…</div>
+            </div>
+          </div>
+
+          <!-- Format & Options -->
+          <div class="ldb-card">
+            <div class="ldb-card-header">
+              <div class="ldb-card-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <h3>Formato de Saída</h3>
+            </div>
+            <div class="toggle-group" style="margin-bottom:12px">
+              <button class="toggle-btn active" id="lb-fmt-gpkg" data-fmt="gpkg">GeoPackage (.gpkg)</button>
+              <button class="toggle-btn" id="lb-fmt-geojson" data-fmt="geojson">GeoJSON</button>
+              <button class="toggle-btn" id="lb-fmt-shp" data-fmt="shp">Shapefile</button>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Diretório de saída</label>
+              <input type="text" id="lb-output-dir" class="form-input" placeholder="(padrão: geo_workspace/output_layers/)" />
+              <span class="form-hint">Deixe em branco para usar o diretório padrão</span>
+            </div>
+          </div>
+
+          <!-- Build Button & Summary -->
+          <div class="ldb-card" style="display:flex;flex-direction:column;gap:16px">
+            <div class="ldb-card-header">
+              <div class="ldb-card-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16"/></svg>
+              </div>
+              <h3>Executar Build</h3>
+            </div>
+            <div id="lb-selection-summary" style="font-size:.84rem;color:var(--text-secondary)">
+              Nenhuma camada selecionada
+            </div>
+            <button class="btn-run" id="lb-build-btn" disabled style="align-self:flex-start">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>
+              Construir Camadas
+            </button>
+            <div id="lb-build-progress" style="display:none">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <div id="lb-progress-dot" style="width:8px;height:8px;border-radius:50%;background:var(--accent-amber);animation:pulse 1s infinite"></div>
+                <span id="lb-build-status" style="font-size:.84rem;color:var(--accent-amber)">Processando…</span>
+              </div>
+              <div style="height:4px;background:var(--bg-elevated);border-radius:2px;overflow:hidden">
+                <div id="lb-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent-cyan),var(--accent-indigo));transition:width .5s ease;border-radius:2px"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Log Console -->
+        <div class="code-card" style="margin-bottom:20px">
+          <div class="code-card-header">
+            <span class="code-lang-label">📋 Log em Tempo Real</span>
+            <div class="code-actions">
+              <span id="lb-job-badge" style="font-size:.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace"></span>
+              <button class="btn-copy" id="lb-log-copy">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                Copiar log
+              </button>
+            </div>
+          </div>
+          <pre class="code-block" id="lb-log-console" style="min-height:200px;max-height:340px;overflow-y:auto;color:var(--text-secondary);font-size:.78rem;white-space:pre-wrap">Aguardando build…</pre>
+        </div>
+
+        <!-- Build Result Summary -->
+        <div id="lb-result-card" style="display:none" class="code-card">
+          <div class="code-card-header">
+            <span class="code-lang-label" id="lb-result-title">✓ Build completo</span>
+          </div>
+          <div style="padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px" id="lb-result-stats">
+          </div>
+        </div>
+
+        <!-- Output Files -->
+        <div style="margin-top:24px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+            <h3 style="font-size:1rem;font-weight:600">📁 Arquivos Gerados</h3>
+            <button class="btn-icon" id="lb-refresh-outputs">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              Atualizar
+            </button>
+          </div>
+          <div class="catalog-table-wrap">
+            <table class="catalog-table">
+              <thead>
+                <tr>
+                  <th>Arquivo</th>
+                  <th>Formato</th>
+                  <th>Tamanho</th>
+                  <th>Gerado em</th>
+                  <th>Ação</th>
+                </tr>
+              </thead>
+              <tbody id="lb-files-tbody">
+                <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">Nenhum arquivo gerado ainda</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- QGIS Import Guide -->
+        <div class="ldb-card" style="margin-top:24px">
+          <div class="ldb-card-header">
+            <div class="ldb-card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <h3>Como importar no QGIS</h3>
+          </div>
+          <div class="naming-convention">
+            <div class="naming-examples">
+              <div class="naming-row"><span style="color:var(--accent-cyan);font-weight:600">1.</span><span>Arraste o arquivo <code>.gpkg</code> diretamente para a janela do QGIS</span></div>
+              <div class="naming-row"><span style="color:var(--accent-cyan);font-weight:600">2.</span><span>Ou use <code>Camada → Adicionar Camada → Adicionar Camada Vetorial</code></span></div>
+              <div class="naming-row"><span style="color:var(--accent-cyan);font-weight:600">3.</span><span>GeoPackage suporta múltiplas camadas em um arquivo — cada dataset fica em sua própria layer</span></div>
+              <div class="naming-row"><span style="color:var(--accent-cyan);font-weight:600">4.</span><span>CRS: <code>EPSG:4326 (WGS 84)</code> — o QGIS fará reprojeção automática se necessário</span></div>
             </div>
           </div>
         </div>
