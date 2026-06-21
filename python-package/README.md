@@ -1,6 +1,9 @@
-# geobr: Download Official Spatial Data Sets of Brazil 
+# GEOfinder: Download Official Spatial Data Sets of Brazil 
 
-<p align="justify">geobr is a computational package to download official spatial data sets of Brazil. The package includes a wide range of geospatial data in geopackage format (like shapefiles but better), available at various geographic scales and for various years with harmonized attributes, projection and topology (see detailed list of available data sets below). </p> 
+<p align="justify">GEOfinder is a computational package to download official spatial data sets of Brazil. The package 
+includes a wide range of geospatial data in geopackage format (like shapefiles but better), available at various 
+geographic scales and for various years with harmonized attributes, projection and topology (see detailed list of 
+available data sets below). </p> 
 
 ## Contribute
 

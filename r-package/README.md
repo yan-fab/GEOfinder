@@ -1,7 +1,7 @@
-# geobr: Download Official Spatial Data Sets of Brazil
+# GEOfinder: Download Official Spatial Data Sets of Brazil
 
 <p align="justify">
-geobr is a computational package to download official spatial data sets
+GEOfinder is a computational package to download official spatial data sets
 of Brazil. The package covers a wide range of spatial data sets,
 available at various geographic scales and for various years with
 harmonized attributes, projection and fixed topology (see detailed list
@@ -25,7 +25,7 @@ here](https://github.com/r-spatial/sf#linux).
 ## Installation Python
 
 ``` bash
-pip install git+https://github.com/yan-fab/geobr.git#subdirectory=python-package
+pip install git+https://github.com/yan-fab/GEOfinder.git#subdirectory=python-package
 ```
 
 *Windows users:*
@@ -36,7 +36,7 @@ conda activate geo_env
 conda config --env --add channels conda-forge  
 conda config --env --set channel_priority strict  
 conda install python=3 geopandas  
-pip install git+https://github.com/yan-fab/geobr.git#subdirectory=python-package
+pip install git+https://github.com/yan-fab/GEOfinder.git#subdirectory=python-package
 ```
 
 # Basic Usage
@@ -137,7 +137,8 @@ documentation for details).
 # Credits
 
 Original shapefiles are created by official government institutions. The
-**geobr** package is maintained by yanju. If you want to cite this package, you
+**GEOfinder** package is maintained by yanju. If you want to cite this package, you
 can cite it as:
 
-- yanju (2026) **geobr: Download Official Spatial Data Sets of Brazil**. v2.0.0 GitHub repository.
+- yanju (2026) **GEOfinder: Download Official Spatial Data Sets of Brazil**. v2.0.0 GitHub repository.
+
