@@ -620,10 +620,82 @@ async function lbLoadLayers() {
     const r = await fetch(`${API_BASE}/layers`);
     const data = await r.json();
     lbRenderLayerCards(data.layers || []);
+    lbLoadExternalLayers(); // Load external layers catalogue
   } catch {
     document.getElementById('lb-layers-grid').innerHTML = '<div style="color:var(--accent-rose);padding:12px;font-size:.84rem">Erro ao carregar camadas</div>';
   }
 }
+
+// Global scope for external layers to access later
+let lbExternalLayersData = [];
+
+async function lbLoadExternalLayers() {
+  try {
+    const r = await fetch(`${API_BASE}/external-layers`);
+    const data = await r.json();
+    lbExternalLayersData = data.layers || [];
+    
+    const datalist = document.getElementById('lb-external-datalist');
+    if (datalist) {
+        datalist.innerHTML = '';
+        lbExternalLayersData.forEach(layer => {
+            const option = document.createElement('option');
+            option.value = layer.label;
+            datalist.appendChild(option);
+        });
+    }
+  } catch (e) {
+    console.error("Erro ao carregar camadas externas", e);
+  }
+}
+
+// Logic to add an external layer to the queue
+document.getElementById('lb-external-add-btn')?.addEventListener('click', () => {
+    const input = document.getElementById('lb-external-search');
+    const val = input.value;
+    if (!val) return;
+    
+    // Find layer by label
+    const layer = lbExternalLayersData.find(l => l.label === val);
+    if (!layer) {
+        showToast('Camada não encontrada no catálogo', 'warning');
+        return;
+    }
+    
+    // Add to selected layers
+    lbSelectedLayers.add(layer.id);
+    
+    // Create a dynamic card for it in the grid so user sees it
+    const grid = document.getElementById('lb-layers-grid');
+    
+    // Check if it's already in the grid
+    if (!document.querySelector(`input[data-lid="${layer.id}"]`)) {
+        const color = CAT_COLORS['geosampa'] || '#94a3b8'; // fallback color
+        const lbl = document.createElement('label');
+        lbl.style.cssText = `display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(${hexToRgb(color)},.06);border:1px solid ${color};border-radius:8px;cursor:pointer;transition:all .18s ease;font-size:.83rem;color:var(--text-secondary)`;
+        lbl.innerHTML = `<input type="checkbox" checked style="accent-color:${color};width:14px;height:14px" data-lid="${layer.id}" /><span style="flex:1">${layer.label}</span><span style="font-size:.68rem;padding:2px 6px;border-radius:999px;background:rgba(${hexToRgb(color)},.12);color:${color};font-weight:600;white-space:nowrap">${layer.category}</span>`;
+        
+        const cb = lbl.querySelector('input');
+        cb.addEventListener('change', () => {
+          if (cb.checked) { lbSelectedLayers.add(layer.id); lbl.style.borderColor=color; lbl.style.background=`rgba(${hexToRgb(color)},.06)`; }
+          else { lbSelectedLayers.delete(layer.id); lbl.style.borderColor='var(--border)'; lbl.style.background='var(--bg-elevated)'; }
+          lbUpdateSummary();
+        });
+        
+        grid.prepend(lbl); // Add to beginning of grid
+    } else {
+        // Just check it if it exists
+        const cb = document.querySelector(`input[data-lid="${layer.id}"]`);
+        if (!cb.checked) {
+            cb.checked = true;
+            cb.dispatchEvent(new Event('change'));
+        }
+    }
+    
+    lbUpdateSummary();
+    input.value = ''; // clear input
+    showToast(`Adicionado: ${layer.label}`, 'success');
+});
 
 function lbRenderLayerCards(layers) {
   const grid = document.getElementById('lb-layers-grid');

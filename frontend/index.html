@@ -843,6 +843,25 @@ print(df)
             </div>
           </div>
 
+          <!-- Catálogo GeoSampa (APIs) -->
+          <div class="ldb-card" style="grid-column:1/-1;">
+            <div class="ldb-card-header">
+              <div class="ldb-card-icon" style="background: linear-gradient(135deg, #f472b6, #db2777);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              </div>
+              <h3>Catálogo de APIs (WFS/GeoSampa)</h3>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 12px 0;">Busque e adicione mais de 400 camadas diretamente das bases da Prefeitura.</p>
+            <div style="display: flex; gap: 10px;">
+              <input type="text" id="lb-external-search" class="form-input" list="lb-external-datalist" placeholder="🔍 Ex: Ciclovias, Parques, Zoneamento..." style="flex: 1;">
+              <datalist id="lb-external-datalist"></datalist>
+              <button class="btn-primary" id="lb-external-add-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;margin-right:6px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Adicionar à Fila
+              </button>
+            </div>
+          </div>
+
           <!-- Format & Options -->
           <div class="ldb-card">
             <div class="ldb-card-header">
