@@ -812,20 +812,69 @@ function lbShowResult(summary) {
   document.getElementById('lb-result-card').style.display = 'block';
 }
 
+let lbFilesData = [];
+let lbSortCol = '';
+let lbSortAsc = true;
+
 async function lbLoadOutputs() {
   const tbody = document.getElementById('lb-files-tbody');
   try {
     const r = await fetch(`${API_BASE}/outputs`);
     const data = await r.json();
-    const files = data.files || [];
-    if (!files.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">Nenhum arquivo gerado ainda</td></tr>'; return; }
-    const extC = { gpkg:'#22d3ee', geojson:'#fbbf24', shp:'#a78bfa' };
-    tbody.innerHTML = files.map(f => `<tr><td><strong>${f.name}</strong></td><td><span style="font-family:monospace;color:${extC[f.ext]||'#94a3b8'};font-size:.8rem">.${f.ext}</span></td><td style="color:var(--text-secondary)">${f.size_mb} MB</td><td style="color:var(--text-muted);font-size:.8rem">${new Date(f.modified).toLocaleString('pt-BR')}</td><td><a href="${API_BASE}/download/${f.name}" class="btn-icon" download style="text-decoration:none;font-size:.75rem">Download</a></td></tr>`).join('');
-  } catch { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px">API offline</td></tr>'; }
+    lbFilesData = data.files || [];
+    lbRenderOutputs();
+  } catch { 
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px">API offline</td></tr>'; 
+  }
 }
 
+function lbRenderOutputs() {
+  const tbody = document.getElementById('lb-files-tbody');
+  if (!lbFilesData.length) { 
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">Nenhum arquivo na listagem</td></tr>'; 
+    return; 
+  }
+  
+  const files = [...lbFilesData];
+  if (lbSortCol) {
+    files.sort((a, b) => {
+      let valA = a[lbSortCol];
+      let valB = b[lbSortCol];
+      if (lbSortCol === 'size_mb') { valA = parseFloat(valA); valB = parseFloat(valB); }
+      if (lbSortCol === 'modified') { valA = new Date(valA).getTime(); valB = new Date(valB).getTime(); }
+      if (valA < valB) return lbSortAsc ? -1 : 1;
+      if (valA > valB) return lbSortAsc ? 1 : -1;
+      return 0;
+    });
+  }
+  
+  const extC = { gpkg:'#22d3ee', geojson:'#fbbf24', shp:'#a78bfa' };
+  tbody.innerHTML = files.map(f => `<tr><td><strong>${f.name}</strong></td><td><span style="font-family:monospace;color:${extC[f.ext]||'#94a3b8'};font-size:.8rem">.${f.ext}</span></td><td style="color:var(--text-secondary)">${f.size_mb} MB</td><td style="color:var(--text-muted);font-size:.8rem">${new Date(f.modified).toLocaleString('pt-BR')}</td><td><a href="${API_BASE}/download/${f.name}" class="btn-icon" download style="text-decoration:none;font-size:.75rem">Download</a></td></tr>`).join('');
+}
+
+document.querySelectorAll('#lb-files-table th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.sort;
+    if (lbSortCol === col) {
+      lbSortAsc = !lbSortAsc;
+    } else {
+      lbSortCol = col;
+      lbSortAsc = true;
+    }
+    
+    document.querySelectorAll('#lb-files-table th .sort-icon').forEach(icon => icon.textContent = '');
+    th.querySelector('.sort-icon').textContent = lbSortAsc ? ' ▲' : ' ▼';
+    
+    lbRenderOutputs();
+  });
+});
+
 document.getElementById('lb-log-copy').addEventListener('click', () => { navigator.clipboard.writeText(document.getElementById('lb-log-console').textContent); });
-document.getElementById('lb-refresh-outputs').addEventListener('click', lbLoadOutputs);
+
+document.getElementById('lb-refresh-outputs').addEventListener('click', () => {
+  lbFilesData = [];
+  lbRenderOutputs();
+});
 document.getElementById('lb-check-api').addEventListener('click', lbCheckApi);
 
 document.querySelectorAll('.nav-item').forEach(btn => {
