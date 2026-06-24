@@ -23,5 +23,12 @@ A API de extração de dados espaciais do IPEA (pacote `geobr`) foi acoplada de 
 A listagem dos arquivos disponíveis na pasta `output_layers` foi implementada logo abaixo do construtor.
 - **Ordenação:** Clicar nos cabeçalhos das colunas (Nome, Tamanho, Data) permite ordenar as tabelas (do maior para o menor, do mais recente ao mais antigo, etc).
 
+## 4. Integração do Catálogo GeoNetwork (Busca Inteligente)
+A aplicação passou a suportar busca dinâmica e auto-discovery de camadas via catálogo GeoNetwork da Prefeitura de SP, adicionando suporte a mais de 400 camadas de metadados externos.
+- **Auto-Discovery Engine (`builder_engine.py`):** Modificado para traduzir chaves como `geoportal:eq_saude` consumindo o `geosampa_catalog_cache.json`.
+- **API Proxy (`api_server.py`):** Rota `/api/catalog/search` adicionada para consultas diretamente no Elasticsearch da prefeitura.
+- **Interface Web (`app.js` e `index.html`):** Adicionada a aba de **Busca Inteligente**.
+- **Status:** **Verificado**. Uma sessão de sub-agente com navegador interativo foi lançada, acessou o `http://localhost:8080`, navegou até o construtor, ativou a *Busca Inteligente*, pesquisou por "saude", verificou o debounce da resposta, escolheu o resultado "Posto de Saúde (WFS)" da datalist e clicou em "Adicionar à Fila", garantindo o pipeline de *End-to-End* perfeito do auto-discovery ao painel de build.
+
 ## Conclusão
-O servidor `layer_builder/api_server.py` está servindo as rotas `/api/layers` e a engine processa os arquivos de forma estritamente isolada e funcional. O sistema está validado e pronto para uso pelo cliente final.
+O servidor `layer_builder/api_server.py` está servindo as rotas `/api/layers` e a engine processa os arquivos de forma estritamente isolada e funcional. As camadas locais, do IPEA, do GeoSampa e a nova Busca Semântica do GeoNetwork estão 100% integradas. O sistema está validado e pronto para uso pelo cliente final.

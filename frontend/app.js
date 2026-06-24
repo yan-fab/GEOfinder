@@ -652,6 +652,12 @@ function lbUpdateExternalDatalist(dbId) {
   datalist.innerHTML = '';
   document.getElementById('lb-external-search').value = ''; // clear input
   
+  const searchInput = document.getElementById('lb-external-search');
+  if (dbId === 'geosampa') searchInput.placeholder = "🔍 Buscar no GeoSampa (WFS)...";
+  else if (dbId === 'inde') searchInput.placeholder = "🔍 Buscar no INDE Brasileiro...";
+  else if (dbId === 'ibge') searchInput.placeholder = "🔍 Buscar no IBGE Mapas...";
+  else if (dbId === 'geonetwork') searchInput.placeholder = "🔍 Digite para buscar no catálogo SP (ex: saude, escola)...";
+
   const filteredLayers = lbExternalLayersData.filter(layer => {
     if (dbId === 'geosampa') return layer.id.startsWith('geosampa:');
     if (dbId === 'inde') return layer.id.startsWith('inde:');
@@ -659,12 +665,82 @@ function lbUpdateExternalDatalist(dbId) {
     return false;
   });
   
-  filteredLayers.forEach(layer => {
+  const maxOptions = 500;
+  const limitedLayers = filteredLayers.slice(0, maxOptions);
+  
+  limitedLayers.forEach(layer => {
       const option = document.createElement('option');
       option.value = layer.label;
       datalist.appendChild(option);
   });
 }
+
+// GeoNetwork state
+let lbGeonetworkTimeout = null;
+let lbGeonetworkCache = [];
+
+document.getElementById('lb-external-search')?.addEventListener('input', (e) => {
+    const activeEl = document.querySelector('.api-db-selector.active');
+    const dbId = activeEl ? activeEl.dataset.db : 'geosampa';
+    
+    if (dbId !== 'geonetwork') return;
+    
+    const val = e.target.value;
+    if (val.length < 3) return;
+    
+    clearTimeout(lbGeonetworkTimeout);
+    lbGeonetworkTimeout = setTimeout(async () => {
+        try {
+            const r = await fetch(`${API_BASE}/catalog/search?q=${encodeURIComponent(val)}`);
+            const data = await r.json();
+            const records = data.metadata || [];
+            
+            lbGeonetworkCache = [];
+            const datalist = document.getElementById('lb-external-datalist');
+            datalist.innerHTML = '';
+            
+            records.forEach(m => {
+                const title = m.title;
+                let layerName = null;
+                const links = Array.isArray(m.link) ? m.link : (m.link ? [m.link] : []);
+                for (const link of links) {
+                    if (typeof link === 'string' && link.toLowerCase().includes('wfs') && link.toLowerCase().includes('geoportal:')) {
+                        const match = link.match(/geoportal:[a-zA-Z0-9_]+/);
+                        if (match) { layerName = match[0]; break; }
+                    }
+                }
+                if (!layerName) {
+                    const keywords = Array.isArray(m.keyword) ? m.keyword : (m.keyword ? [m.keyword] : []);
+                    for (const kw of keywords) {
+                        if (typeof kw === 'string' && (kw.includes('geoportal:') || kw.includes('layer_') || kw.includes('v_'))) {
+                            const match = kw.match(/(geoportal:)?[a-zA-Z0-9_]+/);
+                            if (match) {
+                                layerName = match[0];
+                                if (!layerName.includes('geoportal:')) layerName = `geoportal:${layerName}`;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (layerName) {
+                    const id = layerName.replace('geoportal:', '').trim();
+                    lbGeonetworkCache.push({
+                        id: id,
+                        label: `${title} (WFS)`,
+                        category: 'geonetwork'
+                    });
+                    const option = document.createElement('option');
+                    option.value = `${title} (WFS)`;
+                    datalist.appendChild(option);
+                }
+            });
+            
+        } catch (err) {
+            console.error("Erro na busca GeoNetwork", err);
+        }
+    }, 500);
+});
 
 // Logic to add an external layer to the queue
 document.getElementById('lb-external-add-btn')?.addEventListener('click', () => {
@@ -672,8 +748,13 @@ document.getElementById('lb-external-add-btn')?.addEventListener('click', () => 
     const val = input.value;
     if (!val) return;
     
+    const activeEl = document.querySelector('.api-db-selector.active');
+    const dbId = activeEl ? activeEl.dataset.db : 'geosampa';
+    
     // Find layer by label
-    const layer = lbExternalLayersData.find(l => l.label === val);
+    const sourceData = dbId === 'geonetwork' ? lbGeonetworkCache : lbExternalLayersData;
+    const layer = sourceData.find(l => l.label === val);
+    
     if (!layer) {
         showToast('Camada não encontrada no catálogo', 'warning');
         return;
@@ -1013,6 +1094,16 @@ function renderViewerLayerManager() {
       }
     };
     
+    const btnTable = document.createElement('button');
+    btnTable.innerHTML = '📊';
+    btnTable.title = 'Tabela de Atributos';
+    btnTable.style.cssText = 'background:var(--bg-elevated);border:1px solid var(--border-color);cursor:pointer;font-size:.7rem;padding:2px 4px;border-radius:2px;color:var(--text-primary);';
+    btnTable.onclick = () => {
+      if (typeof showAttributesTable === 'function') {
+        showAttributesTable(item.featureData, item.name);
+      }
+    };
+    
     const btnDel = document.createElement('button');
     btnDel.innerHTML = '✕';
     btnDel.style.cssText = 'background:var(--bg-elevated);border:1px solid var(--border-color);cursor:pointer;font-size:.7rem;padding:2px 4px;border-radius:2px;color:var(--accent-red);';
@@ -1025,6 +1116,7 @@ function renderViewerLayerManager() {
 
     ctrls.appendChild(btnUp);
     ctrls.appendChild(btnDown);
+    ctrls.appendChild(btnTable);
     ctrls.appendChild(btnDel);
 
     div.appendChild(left);
@@ -1052,12 +1144,17 @@ async function loadGpkgToViewer(fileName, arrayBuffer) {
     const paneName = 'pane-' + Date.now();
     viewerMap.createPane(paneName);
 
+    const currentLayerData = [];
+
     const newLayer = L.geoPackageFeatureLayer([], {
       geoPackageUrl: objectUrl,
       layerName: layerName,
       pane: paneName,
       style: { color: "#333", weight: 1, opacity: 1, fillColor: randomColor, fillOpacity: 0.6 },
       onEachFeature: function (feature, layer) {
+        if (feature.properties) {
+          currentLayerData.push(feature.properties);
+        }
         let popupContent = `<div style='max-height:250px;overflow-y:auto;font-family:sans-serif;color:#333;font-size:.8rem;'>`;
         popupContent += `<h4 style='margin-top:0;border-bottom:1px solid #ccc;padding-bottom:5px;font-size:.9rem;'>${layerName}</h4>`;
         for (let key in feature.properties) {
@@ -1075,7 +1172,8 @@ async function loadGpkgToViewer(fileName, arrayBuffer) {
       color: randomColor,
       leafletLayer: newLayer,
       paneName: paneName,
-      visible: true
+      visible: true,
+      featureData: currentLayerData
     });
 
     updateViewerZIndexes();
@@ -1130,3 +1228,71 @@ document.querySelectorAll('.api-db-selector').forEach(selector => {
     }
   });
 });
+
+// --- Tabela de Atributos ---
+function showAttributesTable(data, layerName) {
+  const panel = document.getElementById('attributes-table-panel');
+  if (!panel) return;
+  
+  document.getElementById('attr-table-title').textContent = `Tabela de Atributos: ${layerName}`;
+  const thead = document.getElementById('attr-table-head');
+  const tbody = document.getElementById('attr-table-body');
+  const tfoot = document.getElementById('attr-table-footer');
+  
+  thead.innerHTML = '';
+  tbody.innerHTML = '';
+  
+  if (!data || data.length === 0) {
+    tfoot.textContent = "Nenhum dado tabular disponível para esta camada.";
+    panel.style.display = 'block';
+    return;
+  }
+  
+  // 1. Descoberta Dinâmica de Colunas (Schema)
+  let columns = new Set();
+  data.forEach(row => {
+    if (row) Object.keys(row).forEach(k => columns.add(k));
+  });
+  const colsArr = Array.from(columns);
+  
+  // 2. Renderizar Cabeçalho
+  const trHead = document.createElement('tr');
+  colsArr.forEach(c => {
+    const th = document.createElement('th');
+    th.textContent = c;
+    th.style.padding = '10px 14px';
+    th.style.borderBottom = '2px solid var(--border-color)';
+    th.style.textAlign = 'left';
+    th.style.color = 'var(--text-secondary)';
+    trHead.appendChild(th);
+  });
+  thead.appendChild(trHead);
+  
+  // 3. Otimização de Renderização (Limitador de DOM)
+  const limit = Math.min(data.length, 1000);
+  for (let i = 0; i < limit; i++) {
+    const row = data[i];
+    const tr = document.createElement('tr');
+    if (i % 2 === 1) tr.style.background = 'rgba(0,0,0,0.02)'; // Zebra style fallback
+    
+    colsArr.forEach(c => {
+      const td = document.createElement('td');
+      td.textContent = row[c] !== undefined && row[c] !== null ? String(row[c]) : '';
+      td.style.padding = '8px 14px';
+      td.style.borderBottom = '1px solid var(--border-color)';
+      td.style.whiteSpace = 'nowrap';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  
+  // 4. Rodapé
+  if (data.length > 1000) {
+    tfoot.textContent = `⚠️ Mostrando os primeiros 1.000 registros de um total de ${data.length} feições para evitar o travamento do navegador.`;
+  } else {
+    tfoot.textContent = `Total: ${data.length} registro(s).`;
+  }
+  
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
